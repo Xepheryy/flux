@@ -44,6 +44,21 @@ jobs:
         working-directory: server
         run: go build -o flux-server ./cmd/server
 
+      - name: Test server
+        working-directory: server
+        run: go test ./... -race
+
+      - name: Coverage (min 80%)
+        working-directory: server
+        run: |
+          go test ./... -coverprofile=coverage.out -covermode=atomic
+          total=$(go tool cover -func=coverage.out | grep '^total:' | awk '{gsub(/%/,""); print $3}')
+          echo "Coverage: $total%"
+          if [ "$(echo "$total < 80" | bc)" -eq 1 ]; then
+            echo "Coverage $total% is below 80%"
+            exit 1
+          fi
+
   release:
     needs: [plugin, server]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'

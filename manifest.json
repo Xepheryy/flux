@@ -1,1 +1,1 @@
-{"id":"flux-sync","name":"Flux","version":"1.0.0","minAppVersion":"0.15.0","description":"Sync your vault to Flux server (central source of truth). Disable other sync solutions before using Flux.","author":"Flux","isDesktopOnly":false}
+{"id":"flux-sync","name":"Flux","version":"0.1.0","minAppVersion":"0.15.0","description":"Sync your vault to Flux server (central source of truth). Disable other sync solutions before using Flux.","author":"Flux","isDesktopOnly":false}

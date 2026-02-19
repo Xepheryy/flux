@@ -4,6 +4,8 @@ server/.env
 # Build
 server/flux-server
 server/tmp/
+server/coverage.out
+server/coverage.html
 
 # Dependencies
 plugin/node_modules/

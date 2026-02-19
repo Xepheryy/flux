@@ -12,13 +12,23 @@ import (
 	"github.com/shaun/flux/server/internal/sync"
 )
 
+// Syncer syncs files to GitHub. Implemented by *github.Client; inject a fake in tests.
+type Syncer interface {
+	Sync(ctx context.Context, token, owner, repo string, files []*sync.File, deleted []string) error
+}
+
 type Handler struct {
 	store *sync.Store
-	gh    *github.Client
+	gh    Syncer
 }
 
 func NewHandler(store *sync.Store) *Handler {
 	return &Handler{store: store, gh: github.NewClient()}
+}
+
+// NewHandlerWithSyncer builds a handler with a custom Syncer (e.g. for tests).
+func NewHandlerWithSyncer(store *sync.Store, gh Syncer) *Handler {
+	return &Handler{store: store, gh: gh}
 }
 
 func respondJSON(w http.ResponseWriter, status int, v any) {

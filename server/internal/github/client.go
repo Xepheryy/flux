@@ -4,24 +4,38 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/google/go-github/v66/github"
 	"github.com/shaun/flux/server/internal/sync"
 	"golang.org/x/oauth2"
 )
 
-type Client struct{}
+type Client struct {
+	hc *http.Client // optional; for tests
+}
 
 func NewClient() *Client {
 	return &Client{}
+}
+
+// NewClientWithHTTPClient returns a client that uses the given http.Client for API calls (e.g. in tests).
+func NewClientWithHTTPClient(hc *http.Client) *Client {
+	return &Client{hc: hc}
 }
 
 func (c *Client) Sync(ctx context.Context, token, owner, repo string, files []*sync.File, deleted []string) error {
 	if token == "" {
 		return nil
 	}
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-	client := github.NewClient(oauth2.NewClient(ctx, ts))
+	var httpClient *http.Client
+	if c.hc != nil {
+		httpClient = c.hc
+	} else {
+		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+		httpClient = oauth2.NewClient(ctx, ts)
+	}
+	client := github.NewClient(httpClient)
 	branch := "main"
 
 	for _, path := range deleted {
