@@ -2,6 +2,32 @@
 
 Sync your Obsidian vault to a Flux server (and optionally to GitHub). Flux is the central source of truth; disable other sync solutions for the vault.
 
+## Developer quickstart
+
+**Server**
+
+```bash
+cd server
+cp .env.example .env   # set FLUX_GIT_OWNER, FLUX_GIT_REPO, FLUX_GIT_TOKEN
+go run ./cmd/server     # or: air (hot reload)
+```
+
+Server listens on `:8080` (or `PORT`). It will exit at startup if the three env vars are unset.
+
+**Plugin**
+
+```bash
+cd plugin
+pnpm install
+pnpm run build
+```
+
+Then copy `main.js` and `manifest.json` into your vault’s `.obsidian/plugins/flux-sync/`, or symlink the `plugin` folder there and enable the plugin. Point the plugin at `http://localhost:8080` (or your server URL).
+
+**Test server:** `curl http://localhost:8080/health` → `ok`
+
+---
+
 ## Plugin (Obsidian)
 
 - Configure **Flux folder** (default: `Flux`) so only that folder syncs; the rest of the vault is untouched.
@@ -14,7 +40,7 @@ Sync your Obsidian vault to a Flux server (and optionally to GitHub). Flux is th
 
 ## Server (Go)
 
-Runs the sync API; can sync to GitHub when `FLUX_GITHUB_OWNER`, `FLUX_GITHUB_REPO`, and `FLUX_GITHUB_TOKEN` are set (e.g. in `server/.env`).
+Runs the sync API; syncs to Git when `FLUX_GIT_OWNER`, `FLUX_GIT_REPO`, and `FLUX_GIT_TOKEN` are set (e.g. in `server/.env`). Fails at startup if any are missing.
 
 ```bash
 cd server && go build -o flux-server ./cmd/server && ./flux-server

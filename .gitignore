@@ -12,3 +12,6 @@ plugin/node_modules/
 
 # Local test vault (recreate as needed)
 test-vault/
+
+# Local submission notes (do not push)
+SUBMISSION.md
