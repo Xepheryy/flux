@@ -43,3 +43,53 @@ jobs:
       - name: Build server
         working-directory: server
         run: go build -o flux-server ./cmd/server
+
+  release:
+    needs: [plugin, server]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: plugin/pnpm-lock.yaml
+
+      - name: Install and build plugin
+        working-directory: plugin
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Get version
+        id: version
+        run: |
+          v=$(node -p "require('./plugin/manifest.json').version")
+          echo "version=$v" >> $GITHUB_OUTPUT
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          if gh release view "$v" &>/dev/null; then
+            echo "Release $v already exists, skipping"
+            exit 0
+          fi
+          cp plugin/main.js plugin/manifest.json .
+          assets="main.js manifest.json"
+          [ -f plugin/styles.css ] && cp plugin/styles.css . && assets="$assets styles.css" || true
+          gh release create "$v" \
+            --title="$v" \
+            --notes="Flux plugin $v. See README for setup." \
+            $assets
