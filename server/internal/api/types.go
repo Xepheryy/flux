@@ -11,12 +11,6 @@ type PushFile struct {
 	Hash    string `json:"hash"`
 }
 
-type SetupRequest struct {
-	GitHubToken string `json:"githubToken"`
-	RepoOwner   string `json:"repoOwner"`
-	RepoName    string `json:"repoName"`
-}
-
 type PullResponse struct {
 	Files   []PullFile `json:"files"`
 	Deleted []string   `json:"deleted"`

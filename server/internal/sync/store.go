@@ -13,27 +13,19 @@ type File struct {
 }
 
 type Store struct {
-	mu       sync.RWMutex
-	files    map[string]*File
-	deleted  map[string]int64
-	userMeta map[string]*UserMeta
-}
-
-type UserMeta struct {
-	GitHubToken string
-	RepoOwner   string
-	RepoName    string
+	mu      sync.RWMutex
+	files   map[string]*File
+	deleted map[string]int64
 }
 
 func NewStore() *Store {
 	return &Store{
-		files:    make(map[string]*File),
-		deleted:  make(map[string]int64),
-		userMeta: make(map[string]*UserMeta),
+		files:   make(map[string]*File),
+		deleted: make(map[string]int64),
 	}
 }
 
-func (s *Store) UpsertFile(user string, path, content, hash string) {
+func (s *Store) UpsertFile(path, content, hash string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now().UnixMilli()
@@ -41,7 +33,7 @@ func (s *Store) UpsertFile(user string, path, content, hash string) {
 	delete(s.deleted, path)
 }
 
-func (s *Store) DeleteFile(user string, path string) {
+func (s *Store) DeleteFile(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now().UnixMilli()
@@ -49,7 +41,7 @@ func (s *Store) DeleteFile(user string, path string) {
 	s.deleted[path] = now
 }
 
-func (s *Store) GetFiles(user string) ([]*File, []string) {
+func (s *Store) GetFiles() ([]*File, []string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var files []*File
@@ -61,16 +53,4 @@ func (s *Store) GetFiles(user string) ([]*File, []string) {
 		deleted = append(deleted, p)
 	}
 	return files, deleted
-}
-
-func (s *Store) SetUserMeta(user string, meta *UserMeta) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.userMeta[user] = meta
-}
-
-func (s *Store) GetUserMeta(user string) *UserMeta {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.userMeta[user]
 }

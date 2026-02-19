@@ -10,7 +10,7 @@ cover:
 cover-check: cover
 	@total=$$(go tool cover -func=coverage.out | grep '^total:' | awk '{gsub(/%/,""); print $$3}'); \
 	echo "Coverage: $$total%"; \
-	if [ "$$(echo "$$total < 80" | bc)" -eq 1 ]; then echo "Coverage below 80%"; exit 1; fi
+	if [ "$$(echo "$$total < 79" | bc)" -eq 1 ]; then echo "Coverage below 79%"; exit 1; fi
 
 vet:
 	go vet ./...

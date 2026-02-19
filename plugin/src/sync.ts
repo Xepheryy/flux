@@ -1,5 +1,5 @@
 import type { TAbstractFile } from "obsidian";
-import { Notice, TFile, Vault } from "obsidian";
+import { Notice, requestUrl, TFile, Vault } from "obsidian";
 import type { FluxSettings } from "./settings";
 
 const ORIGIN_FLUX = "flux";
@@ -17,7 +17,8 @@ function normalizeFolder(s: string): string {
 
 function errorMessage(e: unknown): string {
   const err = e instanceof Error ? e : new Error(String(e));
-  return err.cause instanceof Error ? err.cause.message : err.message;
+  const cause = (err as Error & { cause?: unknown }).cause;
+  return cause instanceof Error ? cause.message : err.message;
 }
 
 export interface PushFile {
@@ -65,17 +66,29 @@ export class FluxSync {
 
   inScope(path: string): boolean {
     const folder = normalizeFolder(this.settings.fluxFolder);
-    return !folder || path === folder || path.startsWith(folder + "/");
+    return !folder || path === folder || path.startsWith(`${folder}/`);
   }
 
-  private async api(path: string, opts: RequestInit = {}): Promise<Response> {
+  /** Uses requestUrl for mobile compatibility (bypasses CORS). */
+  private async api(path: string, opts: { method?: string; body?: string } = {}): Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }> {
     if (!this.baseUrl) throw new Error("Flux endpoint not configured");
-    const headers: Record<string, string> = { "Content-Type": "application/json", ...(opts.headers as object) };
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
     const { username, password } = this.settings;
     if (username || password) {
       headers.Authorization = `Basic ${btoa(`${username}:${password}`)}`;
     }
-    return fetch(this.baseUrl + path, { ...opts, headers });
+    const url = this.baseUrl + path;
+    const res = await requestUrl({
+      url,
+      method: opts.method ?? "GET",
+      body: opts.body,
+      headers,
+    });
+    return {
+      ok: res.status >= 200 && res.status < 300,
+      status: res.status,
+      json: () => Promise.resolve(res.json),
+    };
   }
 
   async pushFile(file: TFile): Promise<void> {
@@ -113,9 +126,9 @@ export class FluxSync {
     this.abortController?.abort();
     this.abortController = new AbortController();
     try {
-      const res = await this.api("/pull", { method: "GET", signal: this.abortController.signal });
+      const res = await this.api("/pull", { method: "GET" });
       if (!res.ok) throw new Error(`Pull failed: ${res.status}`);
-      const data: PullResponse = await res.json();
+      const data = (await res.json()) as PullResponse;
       this.applyingPull = true;
       let applied = 0;
       let removed = 0;

@@ -5,16 +5,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/shaun/flux/server/internal/auth"
 	"github.com/shaun/flux/server/internal/sync"
 )
 
 func TestRouter_healthAndPull(t *testing.T) {
 	store := sync.NewStore()
 	h := NewHandler(store)
-	router := NewRouter(h, auth.ExtractUser("default"))
-
-	// Health (no auth)
+	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -22,7 +19,6 @@ func TestRouter_healthAndPull(t *testing.T) {
 		t.Errorf("GET /health: %d %s", rec.Code, rec.Body.String())
 	}
 
-	// Pull with default user
 	req = httptest.NewRequest(http.MethodGet, "/pull", nil)
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -37,7 +33,7 @@ func TestRouter_healthAndPull(t *testing.T) {
 func TestRouter_options(t *testing.T) {
 	store := sync.NewStore()
 	h := NewHandler(store)
-	router := NewRouter(h, nil)
+	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodOptions, "/pull", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

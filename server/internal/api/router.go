@@ -19,15 +19,11 @@ func cors(next http.Handler) http.Handler {
 	})
 }
 
-func NewRouter(h *Handler, authMiddleware func(http.Handler) http.Handler) chi.Router {
+func NewRouter(h *Handler) chi.Router {
 	r := chi.NewRouter()
 	r.Use(cors)
-	if authMiddleware != nil {
-		r.Use(authMiddleware)
-	}
 	r.Get("/health", h.Health)
 	r.Group(func(r chi.Router) {
-		r.Post("/setup", h.Setup)
 		r.Post("/push", h.Push)
 		r.Get("/pull", h.Pull)
 	})

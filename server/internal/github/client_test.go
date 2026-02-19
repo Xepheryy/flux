@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/shaun/flux/server/internal/sync"
@@ -39,6 +40,46 @@ func TestClient_Sync_createAndUpdate(t *testing.T) {
 	err := c.Sync(context.Background(), "token", "o", "r", files, nil)
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
+	}
+}
+
+func TestClient_Sync_updateAndDelete(t *testing.T) {
+	var gotUpdate, gotDelete bool
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			// Return existing content so UpdateFile/DeleteFile paths are taken.
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"sha":"abc"}`))
+		case http.MethodPut:
+			gotUpdate = true
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"content":{"sha":"new"}}`))
+		case http.MethodDelete:
+			if strings.Contains(r.URL.Path, "gone.md") {
+				gotDelete = true
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	client := &http.Client{Transport: &rewriteTransport{baseURL: server.URL}}
+	c := NewClientWithHTTPClient(client)
+	files := []*sync.File{{Path: "existing.md", Content: "hi", Hash: "h1"}}
+	deleted := []string{"gone.md"}
+
+	if err := c.Sync(context.Background(), "token", "o", "r", files, deleted); err != nil {
+		t.Fatalf("Sync update+delete: %v", err)
+	}
+	if !gotUpdate {
+		t.Fatalf("expected update call")
+	}
+	if !gotDelete {
+		t.Fatalf("expected delete call for gone.md")
 	}
 }
 

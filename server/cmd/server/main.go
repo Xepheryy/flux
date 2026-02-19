@@ -7,19 +7,23 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/shaun/flux/server/internal/api"
-	"github.com/shaun/flux/server/internal/auth"
 	"github.com/shaun/flux/server/internal/sync"
 )
 
 func main() {
 	_ = godotenv.Load(".env")
+	if v := os.Getenv("FLUX_GIT_OWNER"); v == "" {
+		log.Fatal("[Flux] FLUX_GIT_OWNER not set")
+	}
+	if v := os.Getenv("FLUX_GIT_REPO"); v == "" {
+		log.Fatal("[Flux] FLUX_GIT_REPO not set")
+	}
+	if v := os.Getenv("FLUX_GIT_TOKEN"); v == "" {
+		log.Fatal("[Flux] FLUX_GIT_TOKEN not set")
+	}
 	store := sync.NewStore()
 	handler := api.NewHandler(store)
-
-	// Auth is delegated to reverse proxy (e.g. Caddy basicauth).
-	// We extract the username from the Authorization header for per-user storage.
-	authMw := auth.ExtractUser("default")
-	router := api.NewRouter(handler, authMw)
+	router := api.NewRouter(handler)
 
 	addr := ":8080"
 	if p := os.Getenv("PORT"); p != "" {
