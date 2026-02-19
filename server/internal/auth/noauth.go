@@ -23,3 +23,7 @@ func ExtractUser(defaultUser string) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+func UserFromRequest(r *http.Request) string {
+	return r.Header.Get("X-Flux-User")
+}
