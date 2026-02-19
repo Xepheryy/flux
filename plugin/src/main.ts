@@ -45,7 +45,18 @@ export default class FluxPlugin extends Plugin {
     this.sync.updateSettings(this.settings);
     const folder = (this.settings.fluxFolder || "").trim().replace(/^\/|\/$/g, "");
     if (folder && !this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+    // Pull first so we get missing notes from the server before pushing local state
     await this.pull();
+    // Then push existing in-scope files so server has our current state
+    const files = this.app.vault.getMarkdownFiles().filter((f) => this.sync!.inScope(f.path));
+    if (files.length) {
+      try {
+        await this.sync.pushAllNow(files);
+      } catch (e) {
+        console.error("[Flux] initial push:", e);
+        new Notice(`Flux: initial push failed — ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
     this.registerEvent(this.app.vault.on("create", (f) => this.sync!.handleCreate(f)));
     this.registerEvent(this.app.vault.on("modify", (f) => this.sync!.handleModify(f)));
     this.registerEvent(this.app.vault.on("rename", (f, old) => this.sync!.handleRename(f, old)));

@@ -84,10 +84,16 @@ export class FluxSync {
       body: opts.body,
       headers,
     });
+    const json = (): Promise<unknown> => {
+      const j = res.json;
+      if (j != null && typeof (j as Promise<unknown>).then === "function") return j as Promise<unknown>;
+      if (typeof j === "string") return Promise.resolve(JSON.parse(j));
+      return Promise.resolve(j);
+    };
     return {
       ok: res.status >= 200 && res.status < 300,
       status: res.status,
-      json: () => Promise.resolve(res.json),
+      json,
     };
   }
 
@@ -121,17 +127,38 @@ export class FluxSync {
     for (const f of files) await this.pushFile(f);
   }
 
+  /** Push multiple files in one request and await (for initial sync on enable). */
+  async pushAllNow(files: TFile[]): Promise<void> {
+    if (!this.settings.enabled || !this.baseUrl || this.applyingPull) return;
+    const pushFiles: PushFile[] = [];
+    for (const f of files) {
+      if (f.extension !== "md" || !this.inScope(f.path)) continue;
+      const content = await this.vault.read(f);
+      pushFiles.push({ path: f.path, content, hash: contentHash(content) });
+    }
+    if (pushFiles.length === 0) return;
+    const res = await this.api("/push", {
+      method: "POST",
+      body: JSON.stringify({ files: pushFiles, deleted: [] }),
+    });
+    if (!res.ok) throw new Error(`Push failed: ${res.status}`);
+  }
+
   async pull(): Promise<void> {
     if (!this.settings.enabled || !this.baseUrl) return;
     this.abortController?.abort();
     this.abortController = new AbortController();
     try {
       const res = await this.api("/pull", { method: "GET" });
-      if (!res.ok) throw new Error(`Pull failed: ${res.status}`);
       const data = (await res.json()) as PullResponse;
+      if (!res.ok) {
+        const msg = typeof data === "object" && data != null && "error" in data ? String((data as { error?: string }).error) : "";
+        throw new Error(`Pull failed: ${res.status}${msg ? ` — ${msg}` : ""}`);
+      }
       this.applyingPull = true;
       let applied = 0;
       let removed = 0;
+      const filesList = Array.isArray((data as PullResponse).files) ? (data as PullResponse).files : [];
       try {
         for (const p of data.deleted || []) {
           if (!this.inScope(p)) continue;
@@ -141,17 +168,20 @@ export class FluxSync {
             removed++;
           }
         }
-        for (const f of data.files || []) {
+        for (const f of filesList) {
+          if (!f || typeof f.path !== "string" || typeof f.content !== "string") continue;
           if (!this.inScope(f.path)) continue;
           const existing = this.vault.getAbstractFileByPath(f.path);
           if (existing && existing instanceof TFile) {
             const cur = await this.vault.read(existing);
             if (contentHash(cur) !== f.hash) {
-              await this.vault.modify(existing, f.content, { origin: ORIGIN_FLUX });
+              await this.vault.modify(existing, f.content, {});
               applied++;
             }
           } else {
-            await this.vault.create(f.path, f.content, { origin: ORIGIN_FLUX });
+            const dir = f.path.includes("/") ? f.path.replace(/\/[^/]+$/, "") : "";
+            if (dir && !this.vault.getAbstractFileByPath(dir)) await this.vault.createFolder(dir);
+            await this.vault.create(f.path, f.content, {});
             applied++;
           }
         }
