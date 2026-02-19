@@ -1,0 +1,12 @@
+# Env (contains secrets)
+server/.env
+
+# Build
+server/flux-server
+server/tmp/
+
+# Dependencies
+plugin/node_modules/
+
+# Local test vault (recreate as needed)
+test-vault/

@@ -1,0 +1,49 @@
+name: Release plugin
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: plugin/pnpm-lock.yaml
+
+      - name: Install and build
+        working-directory: plugin
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Prepare release assets
+        run: |
+          cp plugin/main.js plugin/manifest.json .
+          [ -f plugin/styles.css ] && cp plugin/styles.css . || true
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          assets="main.js manifest.json"
+          [ -f styles.css ] && assets="$assets styles.css" || true
+          gh release create "$tag" \
+            --title="$tag" \
+            --notes="Flux plugin $tag. See README for setup." \
+            $assets
