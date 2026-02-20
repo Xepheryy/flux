@@ -1,5 +1,5 @@
-import type { TAbstractFile } from "obsidian";
-import { Notice, requestUrl, TFile, Vault } from "obsidian";
+import { Notice, requestUrl, TFile } from "obsidian";
+import type { TAbstractFile, Vault } from "obsidian";
 import type { FluxSettings } from "./settings";
 
 const ORIGIN_FLUX = "flux";
@@ -69,6 +69,18 @@ export class FluxSync {
     return !folder || path === folder || path.startsWith(`${folder}/`);
   }
 
+  /** Creates parent folder and all ancestors; no-op if dir is empty or already exists. */
+  private async ensureParentFolders(filePath: string): Promise<void> {
+    const dir = filePath.includes("/") ? filePath.replace(/\/[^/]+$/, "") : "";
+    if (!dir) return;
+    const parts = dir.split("/").filter(Boolean);
+    let acc = "";
+    for (const part of parts) {
+      acc = acc ? `${acc}/${part}` : part;
+      if (!this.vault.getAbstractFileByPath(acc)) await this.vault.createFolder(acc);
+    }
+  }
+
   /** Uses requestUrl for mobile compatibility (bypasses CORS). */
   private async api(path: string, opts: { method?: string; body?: string } = {}): Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }> {
     if (!this.baseUrl) throw new Error("Flux endpoint not configured");
@@ -84,11 +96,15 @@ export class FluxSync {
       body: opts.body,
       headers,
     });
-    const json = (): Promise<unknown> => {
+    const json = async (): Promise<unknown> => {
       const j = res.json;
+      if (typeof j === "function") {
+        const out = (j as () => unknown)();
+        return out instanceof Promise ? out : Promise.resolve(out);
+      }
       if (j != null && typeof (j as Promise<unknown>).then === "function") return j as Promise<unknown>;
-      if (typeof j === "string") return Promise.resolve(JSON.parse(j));
-      return Promise.resolve(j);
+      if (typeof j === "string") return JSON.parse(j);
+      return j;
     };
     return {
       ok: res.status >= 200 && res.status < 300,
@@ -159,9 +175,11 @@ export class FluxSync {
       let applied = 0;
       let removed = 0;
       const filesList = Array.isArray((data as PullResponse).files) ? (data as PullResponse).files : [];
+      console.log("[Flux] pull response:", filesList.length, "files,", (data.deleted?.length ?? 0), "deleted");
       try {
-        for (const p of data.deleted || []) {
-          if (!this.inScope(p)) continue;
+        for (const raw of data.deleted || []) {
+          const p = typeof raw === "string" ? raw.trim().replace(/\\/g, "/") : "";
+          if (!p || !this.inScope(p)) continue;
           const f = this.vault.getAbstractFileByPath(p);
           if (f) {
             await this.vault.delete(f);
@@ -169,9 +187,16 @@ export class FluxSync {
           }
         }
         for (const f of filesList) {
-          if (!f || typeof f.path !== "string" || typeof f.content !== "string") continue;
-          if (!this.inScope(f.path)) continue;
-          const existing = this.vault.getAbstractFileByPath(f.path);
+          if (!f || typeof f.path !== "string" || typeof f.content !== "string") {
+            if (f && (typeof f.path !== "string" || typeof f.content !== "string")) console.warn("[Flux] skip file: missing path or content", f);
+            continue;
+          }
+          const path = (f.path as string).trim().replace(/\\/g, "/");
+          if (!this.inScope(path)) {
+            console.log("[Flux] skip (out of scope):", path, "folder:", normalizeFolder(this.settings.fluxFolder));
+            continue;
+          }
+          const existing = this.vault.getAbstractFileByPath(path);
           if (existing && existing instanceof TFile) {
             const cur = await this.vault.read(existing);
             if (contentHash(cur) !== f.hash) {
@@ -179,16 +204,39 @@ export class FluxSync {
               applied++;
             }
           } else {
-            const dir = f.path.includes("/") ? f.path.replace(/\/[^/]+$/, "") : "";
-            if (dir && !this.vault.getAbstractFileByPath(dir)) await this.vault.createFolder(dir);
-            await this.vault.create(f.path, f.content, {});
+            await this.ensureParentFolders(path);
+            await this.vault.create(path, f.content, {});
             applied++;
           }
         }
       } finally {
         this.applyingPull = false;
       }
-      new Notice(applied || removed ? `Flux: pulled ${applied} updated, ${removed} deleted` : "Flux: pull complete (no changes)");
+      // Diff: push local-only files so server tree matches device
+      const remotePaths = new Set(filesList.map((f) => (f.path as string).trim().replace(/\\/g, "/")));
+      const deletedSet = new Set((data.deleted || []).map((p) => (typeof p === "string" ? p.trim().replace(/\\/g, "/") : "")).filter(Boolean));
+      const localFiles = this.vault.getMarkdownFiles().filter((f) => this.inScope(f.path));
+      const toPush = localFiles.filter((f) => {
+        const p = f.path.trim().replace(/\\/g, "/");
+        return !remotePaths.has(p) && !deletedSet.has(p);
+      });
+      let pushed = 0;
+      if (toPush.length) {
+        try {
+          await this.pushAllNow(toPush);
+          pushed = toPush.length;
+        } catch (e) {
+          console.error("[Flux] push local-only:", e);
+          new Notice(`Flux: push failed — ${errorMessage(e)}`);
+        }
+      }
+      if (applied || removed || pushed) {
+        const parts = [];
+        if (applied) parts.push(`${applied} updated`);
+        if (removed) parts.push(`${removed} deleted`);
+        if (pushed) parts.push(`${pushed} pushed`);
+        new Notice(`Flux: synced — ${parts.join(", ")}`);
+      }
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
       console.error("[Flux] pull error:", e);

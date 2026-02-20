@@ -9,6 +9,7 @@ export default class FluxPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
+    this.addCommand({ id: "flux-sync", name: "Sync", callback: () => this.syncNow() });
     this.addCommand({ id: "flux-pull", name: "Pull changes", callback: () => this.pull() });
     this.addCommand({ id: "flux-push", name: "Push all changes", callback: () => this.pushAll() });
     this.addSettingTab(new FluxSettingTab(this.app, this));
@@ -74,6 +75,11 @@ export default class FluxPlugin extends Plugin {
       clearInterval(this.pullInterval);
       this.pullInterval = null;
     }
+  }
+
+  private async syncNow() {
+    await this.pull();
+    await this.pushAll();
   }
 
   private pull() {
