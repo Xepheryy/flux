@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,6 +11,69 @@ import (
 
 	"github.com/shaun/flux/server/internal/sync"
 )
+
+func TestClient_FetchFromRepo_emptyToken(t *testing.T) {
+	c := NewClient()
+	files, err := c.FetchFromRepo(context.Background(), "", "o", "r")
+	if err != nil {
+		t.Fatalf("FetchFromRepo empty token: %v", err)
+	}
+	if files != nil {
+		t.Fatalf("expected nil files for empty token, got %d", len(files))
+	}
+}
+
+func TestClient_FetchFromRepo(t *testing.T) {
+	// Mock GitHub Contents API: root dir -> Flux/; Flux/ -> note.md; Flux/note.md -> file content
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("ref")
+		_ = path
+		p := strings.TrimPrefix(r.URL.Path, "/repos/o/r/contents/")
+		p = strings.TrimSuffix(p, "/")
+
+		if p == "" {
+			// Root: return dir "Flux"
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"name": "Flux", "path": "Flux", "type": "dir"},
+			})
+			return
+		}
+		if p == "Flux" {
+			// Flux dir: return file note.md
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"name": "note.md", "path": "Flux/note.md", "type": "file"},
+			})
+			return
+		}
+		if p == "Flux/note.md" {
+			// File content (base64 of "# hello\n")
+			json.NewEncoder(w).Encode(map[string]any{
+				"type": "file", "path": "Flux/note.md",
+				"encoding": "base64",
+				"content": "IyBoZWxsbwo=",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	client := &http.Client{Transport: &rewriteTransport{baseURL: server.URL}}
+	c := NewClientWithHTTPClient(client)
+	files, err := c.FetchFromRepo(context.Background(), "token", "o", "r")
+	if err != nil {
+		t.Fatalf("FetchFromRepo: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+	if files[0].Path != "Flux/note.md" || files[0].Content != "# hello\n" {
+		t.Fatalf("got %+v", files[0])
+	}
+	if files[0].Hash == "" {
+		t.Fatalf("expected non-empty hash")
+	}
+}
 
 func TestClient_Sync_emptyToken(t *testing.T) {
 	c := NewClient()
@@ -80,6 +144,39 @@ func TestClient_Sync_updateAndDelete(t *testing.T) {
 	}
 	if !gotDelete {
 		t.Fatalf("expected delete call for gone.md")
+	}
+}
+
+func TestClient_Sync_retryOn409(t *testing.T) {
+	// First UpdateFile returns 409, retry with fresh SHA succeeds
+	updateCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"sha":"abc","content":"aW5pdA=="}`))
+			return
+		}
+		if r.Method == http.MethodPut {
+			updateCalls++
+			if updateCalls == 1 {
+				w.WriteHeader(http.StatusConflict)
+				w.Write([]byte(`{"message":"update does not match sha"}`))
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"content":{"sha":"new"}}`))
+		}
+	}))
+	defer server.Close()
+
+	client := &http.Client{Transport: &rewriteTransport{baseURL: server.URL}}
+	c := NewClientWithHTTPClient(client)
+	files := []*sync.File{{Path: "x.md", Content: "init", Hash: "h1"}}
+	if err := c.Sync(context.Background(), "token", "o", "r", files, nil); err != nil {
+		t.Fatalf("Sync 409 retry: %v", err)
+	}
+	if updateCalls != 2 {
+		t.Fatalf("expected 2 update calls (retry), got %d", updateCalls)
 	}
 }
 
