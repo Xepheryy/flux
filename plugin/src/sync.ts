@@ -177,9 +177,9 @@ export class FluxSync {
             removed++;
           }
         }
+        // Apply all files from server (whole vault sync; no path filter)
         for (const f of filesList) {
           if (!f || typeof f.path !== "string" || typeof f.content !== "string") {
-            if (f && (typeof f.path !== "string" || typeof f.content !== "string")) console.warn("[Flux] skip file: missing path or content", f);
             continue;
           }
           const path = (f.path as string).trim().replace(/\\/g, "/");
@@ -245,16 +245,13 @@ export class FluxSync {
   }
   async handleRename(file: TAbstractFile, oldPath: string): Promise<void> {
     if (this.applyingPull || !this.settings.enabled || !this.baseUrl) return;
-    const dropOld = true;
-    const pushNew = file instanceof TFile;
-    if (!dropOld && !pushNew) return;
-    const deleted = dropOld ? [oldPath.trim().replace(/\\/g, "/")] : [];
+    const norm = (p: string) => p.trim().replace(/\\/g, "/");
+    const deleted = [norm(oldPath)];
     const files: PushFile[] = [];
-    if (pushNew) {
+    if (file instanceof TFile) {
       try {
         const content = await this.vault.read(file);
-        const path = file.path.trim().replace(/\\/g, "/");
-        files.push({ path, content, hash: contentHash(content) });
+        files.push({ path: norm(file.path), content, hash: contentHash(content) });
       } catch (e) {
         console.error("[Flux] rename read error:", e);
         new Notice(`Flux: rename failed — ${errorMessage(e)}`);
@@ -262,14 +259,10 @@ export class FluxSync {
       }
     }
     try {
-      const res = await this.api("/push", {
-        method: "POST",
-        body: JSON.stringify({ files, deleted }),
-      });
+      const res = await this.api("/push", { method: "POST", body: JSON.stringify({ files, deleted }) });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        const msg = typeof body === "object" && body != null && "error" in body ? String((body as { error?: string }).error) : "";
-        throw new Error(`Push failed: ${res.status}${msg ? ` — ${msg}` : ""}`);
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(`Push failed: ${res.status}${body?.error ? ` — ${body.error}` : ""}`);
       }
       new Notice(`Flux: synced rename → ${file.path}`);
     } catch (e) {

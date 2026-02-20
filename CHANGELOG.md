@@ -1,5 +1,13 @@
 # Changelog
 
+Versions follow [semver](https://semver.org/) (MAJOR.MINOR.PATCH).
+
+## 0.2.2
+
+- Semver documented in README and CHANGELOG.
+- Plugin: simplified rename handler, removed skip-file log, whole-vault comment.
+- Server: simplified GitHub delete 409 retry loop.
+
 ## 0.2.1
 
 - **Backend:** Retry GitHub delete on 409 (SHA mismatch when moving/renaming files).

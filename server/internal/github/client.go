@@ -111,9 +111,9 @@ func (c *Client) Sync(ctx context.Context, token, owner, repo string, files []*s
 	client := github.NewClient(httpClient)
 	branch := "main"
 
+	getOpts := &github.RepositoryContentGetOptions{Ref: branch}
 	for _, path := range deleted {
-		opts := &github.RepositoryContentGetOptions{Ref: branch}
-		existing, _, _, err := client.Repositories.GetContents(ctx, owner, repo, path, opts)
+		existing, _, _, err := client.Repositories.GetContents(ctx, owner, repo, path, getOpts)
 		if err != nil {
 			var ghErr *github.ErrorResponse
 			if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == 404 {
@@ -121,24 +121,21 @@ func (c *Client) Sync(ctx context.Context, token, owner, repo string, files []*s
 			}
 			return err
 		}
-		_, _, err = client.Repositories.DeleteFile(ctx, owner, repo, path, &github.RepositoryContentFileOptions{
-			Message: github.String(fmt.Sprintf("Flux: delete %s", path)),
-			SHA:     existing.SHA,
-			Branch:  &branch,
-		})
-		if err != nil {
-			if isConflict(err) {
-				existing, _, _, err2 := client.Repositories.GetContents(ctx, owner, repo, path, opts)
-				if err2 != nil {
-					return err
-				}
-				_, _, err = client.Repositories.DeleteFile(ctx, owner, repo, path, &github.RepositoryContentFileOptions{
-					Message: github.String(fmt.Sprintf("Flux: delete %s", path)),
-					SHA:     existing.SHA,
-					Branch:  &branch,
-				})
+		for retry := 0; retry < 2; retry++ {
+			_, _, err = client.Repositories.DeleteFile(ctx, owner, repo, path, &github.RepositoryContentFileOptions{
+				Message: github.String(fmt.Sprintf("Flux: delete %s", path)),
+				SHA:     existing.SHA,
+				Branch:  &branch,
+			})
+			if err == nil {
+				break
 			}
-			if err != nil {
+			if !isConflict(err) {
+				return err
+			}
+			var getErr error
+			existing, _, _, getErr = client.Repositories.GetContents(ctx, owner, repo, path, getOpts)
+			if getErr != nil {
 				return err
 			}
 		}

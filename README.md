@@ -55,6 +55,8 @@ Hot reload: `cd server && air`
 
 ## Releasing the plugin
 
-1. Bump version in `plugin/manifest.json` (and root `manifest.json`).
+We use [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH): **MAJOR** for breaking changes, **MINOR** for new features (backward compatible), **PATCH** for bug fixes.
+
+1. Bump version in `plugin/manifest.json` and root `manifest.json` (and `plugin/package.json`).
 2. `cd plugin && pnpm run build`.
 3. Create a GitHub release with tag = version (e.g. `1.0.0`), attach `manifest.json`, `main.js`, and `styles.css` from `plugin/`.
