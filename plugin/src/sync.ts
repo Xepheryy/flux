@@ -11,10 +11,6 @@ function contentHash(str: string): string {
   return `sha256:${Math.abs(h).toString(36)}${str.length}`;
 }
 
-function normalizeFolder(s: string): string {
-  return (s || "").trim().replace(/^\/|\/$/g, "");
-}
-
 function errorMessage(e: unknown): string {
   const err = e instanceof Error ? e : new Error(String(e));
   const cause = (err as Error & { cause?: unknown }).cause;
@@ -64,11 +60,6 @@ export class FluxSync {
     return u.replace(/\/$/, "");
   }
 
-  inScope(path: string): boolean {
-    const folder = normalizeFolder(this.settings.fluxFolder);
-    return !folder || path === folder || path.startsWith(`${folder}/`);
-  }
-
   /** Creates parent folder and all ancestors; no-op if dir is empty or already exists. */
   private async ensureParentFolders(filePath: string): Promise<void> {
     const dir = filePath.includes("/") ? filePath.replace(/\/[^/]+$/, "") : "";
@@ -114,7 +105,7 @@ export class FluxSync {
   }
 
   async pushFile(file: TFile): Promise<void> {
-    if (this.applyingPull || !this.settings.enabled || !this.baseUrl || file.extension !== "md" || !this.inScope(file.path)) return;
+    if (this.applyingPull || !this.settings.enabled || !this.baseUrl || file.extension !== "md") return;
 
     const path = file.path;
     const t = this.pushDebounce.get(path);
@@ -148,7 +139,7 @@ export class FluxSync {
     if (!this.settings.enabled || !this.baseUrl || this.applyingPull) return;
     const pushFiles: PushFile[] = [];
     for (const f of files) {
-      if (f.extension !== "md" || !this.inScope(f.path)) continue;
+      if (f.extension !== "md") continue;
       const content = await this.vault.read(f);
       pushFiles.push({ path: f.path, content, hash: contentHash(content) });
     }
@@ -179,7 +170,7 @@ export class FluxSync {
       try {
         for (const raw of data.deleted || []) {
           const p = typeof raw === "string" ? raw.trim().replace(/\\/g, "/") : "";
-          if (!p || !this.inScope(p)) continue;
+          if (!p) continue;
           const f = this.vault.getAbstractFileByPath(p);
           if (f) {
             await this.vault.delete(f);
@@ -192,10 +183,6 @@ export class FluxSync {
             continue;
           }
           const path = (f.path as string).trim().replace(/\\/g, "/");
-          if (!this.inScope(path)) {
-            console.log("[Flux] skip (out of scope):", path, "folder:", normalizeFolder(this.settings.fluxFolder));
-            continue;
-          }
           const existing = this.vault.getAbstractFileByPath(path);
           if (existing && existing instanceof TFile) {
             const cur = await this.vault.read(existing);
@@ -215,7 +202,7 @@ export class FluxSync {
       // Diff: push local-only files so server tree matches device
       const remotePaths = new Set(filesList.map((f) => (f.path as string).trim().replace(/\\/g, "/")));
       const deletedSet = new Set((data.deleted || []).map((p) => (typeof p === "string" ? p.trim().replace(/\\/g, "/") : "")).filter(Boolean));
-      const localFiles = this.vault.getMarkdownFiles().filter((f) => this.inScope(f.path));
+      const localFiles = this.vault.getMarkdownFiles();
       const toPush = localFiles.filter((f) => {
         const p = f.path.trim().replace(/\\/g, "/");
         return !remotePaths.has(p) && !deletedSet.has(p);
@@ -258,21 +245,32 @@ export class FluxSync {
   }
   async handleRename(file: TAbstractFile, oldPath: string): Promise<void> {
     if (this.applyingPull || !this.settings.enabled || !this.baseUrl) return;
-    const dropOld = this.inScope(oldPath);
-    const pushNew = file instanceof TFile && this.inScope(file.path);
+    const dropOld = true;
+    const pushNew = file instanceof TFile;
     if (!dropOld && !pushNew) return;
-    const deleted = dropOld ? [oldPath] : [];
+    const deleted = dropOld ? [oldPath.trim().replace(/\\/g, "/")] : [];
     const files: PushFile[] = [];
     if (pushNew) {
-      const content = await this.vault.read(file);
-      files.push({ path: file.path, content, hash: contentHash(content) });
+      try {
+        const content = await this.vault.read(file);
+        const path = file.path.trim().replace(/\\/g, "/");
+        files.push({ path, content, hash: contentHash(content) });
+      } catch (e) {
+        console.error("[Flux] rename read error:", e);
+        new Notice(`Flux: rename failed — ${errorMessage(e)}`);
+        return;
+      }
     }
     try {
       const res = await this.api("/push", {
         method: "POST",
         body: JSON.stringify({ files, deleted }),
       });
-      if (!res.ok) throw new Error(`Push failed: ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = typeof body === "object" && body != null && "error" in body ? String((body as { error?: string }).error) : "";
+        throw new Error(`Push failed: ${res.status}${msg ? ` — ${msg}` : ""}`);
+      }
       new Notice(`Flux: synced rename → ${file.path}`);
     } catch (e) {
       console.error("[Flux] rename push error:", e);
@@ -281,7 +279,7 @@ export class FluxSync {
   }
 
   async handleDelete(file: TAbstractFile): Promise<void> {
-    if (this.applyingPull || !this.settings.enabled || !this.baseUrl || !this.inScope(file.path)) return;
+    if (this.applyingPull || !this.settings.enabled || !this.baseUrl) return;
     try {
       const res = await this.api("/push", {
         method: "POST",

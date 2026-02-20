@@ -1,6 +1,6 @@
 # Flux
 
-Sync your Obsidian vault to a Flux server (and optionally to GitHub). Flux is the central source of truth; disable other sync solutions for the vault.
+Sync your entire Obsidian vault to a Flux server (and optionally to GitHub). Flux is the central source of truth; disable other sync solutions for the vault.
 
 ## Developer quickstart
 
@@ -30,9 +30,8 @@ Then copy `main.js` and `manifest.json` into your vault’s `.obsidian/plugins/f
 
 ## Plugin (Obsidian)
 
-- Configure **Flux folder** (default: `Flux`) so only that folder syncs; the rest of the vault is untouched.
 - Set **Endpoint URL** (e.g. `https://flux.example.com`) and optional Basic Auth.
-- Enable sync; pull runs first, then push on save. Renames and deletes are synced.
+- Enable sync to sync the **whole vault** (all markdown files). Pull runs first, then push on save. Renames and deletes are synced.
 
 **Install from source:** copy `plugin/main.js`, `plugin/manifest.json`, and (if present) `plugin/styles.css` into your vault’s `.obsidian/plugins/flux-sync/` folder.
 

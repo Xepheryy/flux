@@ -112,7 +112,8 @@ func (c *Client) Sync(ctx context.Context, token, owner, repo string, files []*s
 	branch := "main"
 
 	for _, path := range deleted {
-		existing, _, _, err := client.Repositories.GetContents(ctx, owner, repo, path, nil)
+		opts := &github.RepositoryContentGetOptions{Ref: branch}
+		existing, _, _, err := client.Repositories.GetContents(ctx, owner, repo, path, opts)
 		if err != nil {
 			var ghErr *github.ErrorResponse
 			if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == 404 {
@@ -126,7 +127,20 @@ func (c *Client) Sync(ctx context.Context, token, owner, repo string, files []*s
 			Branch:  &branch,
 		})
 		if err != nil {
-			return err
+			if isConflict(err) {
+				existing, _, _, err2 := client.Repositories.GetContents(ctx, owner, repo, path, opts)
+				if err2 != nil {
+					return err
+				}
+				_, _, err = client.Repositories.DeleteFile(ctx, owner, repo, path, &github.RepositoryContentFileOptions{
+					Message: github.String(fmt.Sprintf("Flux: delete %s", path)),
+					SHA:     existing.SHA,
+					Branch:  &branch,
+				})
+			}
+			if err != nil {
+				return err
+			}
 		}
 	}
 

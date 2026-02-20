@@ -8,7 +8,6 @@ const defaultSettings: FluxSettings = {
   username: "u",
   password: "p",
   syncIntervalSeconds: 30,
-  fluxFolder: "Flux",
   enabled: true,
   acknowledgedWarning: true,
 };
@@ -126,7 +125,7 @@ describe("FluxSync", () => {
       expect(vault.delete).toHaveBeenCalledWith(existing);
     });
 
-    it("skips file outside fluxFolder scope", async () => {
+    it("creates file in any folder (whole vault sync)", async () => {
       requestUrl.mockResolvedValue({
         status: 200,
         json: Promise.resolve({
@@ -135,24 +134,17 @@ describe("FluxSync", () => {
         }),
       });
 
+      vault.getAbstractFileByPath.mockReturnValue(null);
+      vault.getAbstractFileByPath.mockImplementation((path: string) => {
+        if (path === "Other") return null;
+        return null;
+      });
+
       const sync = new FluxSync(defaultSettings, vault as any);
       await sync.pull();
 
-      expect(vault.create).not.toHaveBeenCalled();
-      expect(vault.createFolder).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("inScope", () => {
-    it("returns true for path in fluxFolder", () => {
-      const sync = new FluxSync(defaultSettings, vault as any);
-      expect(sync.inScope("Flux")).toBe(true);
-      expect(sync.inScope("Flux/note.md")).toBe(true);
-    });
-
-    it("returns false for path outside fluxFolder", () => {
-      const sync = new FluxSync(defaultSettings, vault as any);
-      expect(sync.inScope("Other/note.md")).toBe(false);
+      expect(vault.createFolder).toHaveBeenCalledWith("Other");
+      expect(vault.create).toHaveBeenCalledWith("Other/note.md", "# No", {});
     });
   });
 });

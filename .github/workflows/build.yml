@@ -106,5 +106,5 @@ jobs:
           [ -f plugin/styles.css ] && cp plugin/styles.css . && assets="$assets styles.css" || true
           gh release create "$v" \
             --title="$v" \
-            --notes="Flux plugin $v. See README for setup." \
+            --notes="Flux plugin $v. Whole vault sync. See README and CHANGELOG.md." \
             $assets

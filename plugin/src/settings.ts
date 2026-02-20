@@ -7,7 +7,6 @@ export interface FluxSettings {
   username: string;
   password: string;
   syncIntervalSeconds: number;
-  fluxFolder: string;
   enabled: boolean;
   acknowledgedWarning: boolean;
 }
@@ -17,14 +16,9 @@ export const DEFAULT_SETTINGS: FluxSettings = {
   username: "",
   password: "",
   syncIntervalSeconds: 30,
-  fluxFolder: "Flux",
   enabled: false,
   acknowledgedWarning: false,
 };
-
-function normFolder(v: string) {
-  return (v || "").trim().replace(/^\/|\/$/g, "");
-}
 
 export class FluxSettingTab extends PluginSettingTab {
   constructor(app: App, public plugin: FluxPlugin) {
@@ -47,9 +41,6 @@ export class FluxSettingTab extends PluginSettingTab {
 
     new Setting(containerEl).setName("Password").setDesc("Basic Auth password")
       .addText((t) => t.setPlaceholder("password").setValue(plugin.settings.password).onChange((v) => save({ password: v })));
-
-    new Setting(containerEl).setName("Flux folder").setDesc("Only sync files in this folder (e.g. Flux). Empty = whole vault.")
-      .addText((t) => t.setPlaceholder("Flux").setValue(plugin.settings.fluxFolder).onChange((v) => save({ fluxFolder: normFolder(v || "") })));
 
     new Setting(containerEl).setName("Pull interval (seconds)").setDesc("How often to pull (default 30)")
       .addText((t) => t.setPlaceholder("30").setValue(String(plugin.settings.syncIntervalSeconds)).onChange((v) => {

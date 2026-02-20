@@ -1,9 +1,9 @@
 {
   "id": "flux-sync",
   "name": "Flux",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "minAppVersion": "0.15.0",
-  "description": "Sync your vault to Flux server (central source of truth). Disable other sync solutions before using Flux.",
+  "description": "Sync your entire vault to Flux server (central source of truth). Disable other sync solutions before using Flux.",
   "author": "Flux",
   "isDesktopOnly": false
 }
